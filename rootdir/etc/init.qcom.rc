@@ -143,6 +143,9 @@ on boot
     chmod 0666 /dev/p61
     chown spi spi /dev/p61
 
+    # DASH
+    chmod 0666 /dev/dash
+
     # RGB light
     chown system system /sys/class/leds/red/pause_lo
     chown system system /sys/class/leds/blue/pause_lo
@@ -429,9 +432,18 @@ on post-fs-data
     mkdir /data/misc/SelfHost/Running/ 2750 system shell
     mkdir /data/misc/SelfHost/socket/ 2770 system system
 
+    # Create PERFD deamon related dirs
+    mkdir /data/misc/perfd 0755 root system
+    chmod 2755 /data/misc/perfd
+    mkdir /data/system/perfd 0770 root system
+    chmod 2770 /data/system/perfd
+
     # NFC local data and nfcee xml storage
     mkdir /data/nfc 0770 nfc nfc
     mkdir /data/nfc/param 0770 nfc nfc
+
+    #Create IOP  deamon related dirs
+    mkdir /data/misc/iop 0770 root system
 
     # Mark the copy complete flag to not completed
     write /data/misc/radio/copy_complete 0
@@ -470,7 +482,7 @@ service qvop-daemon /system/bin/qvop-daemon
     group system drmrpc
 
 # start up peripheral manager
-service per_mgr system/bin/pm-service
+service per_mgr /system/bin/pm-service
     class late_start
     user system
     group system net_raw
@@ -493,6 +505,13 @@ service qseecomd /system/bin/qseecomd
    user root
    group root
 
+service perfd /system/vendor/bin/perfd
+   class main
+   user root
+   socket perfd seqpacket 0666 root system
+   disabled
+   writepid /dev/cpuset/system-background/tasks
+
 service seempd /system/bin/seempd
    class late_start
    user system
@@ -511,9 +530,6 @@ service thermal-engine /system/vendor/bin/thermal-engine
    socket thermal-recv-client stream 0660 system system
    socket thermal-recv-passive-client stream 0666 system system
    group root
-   socket thermal-send-client stream 0666 system system
-   socket thermal-recv-client stream 0660 system system
-   socket thermal-recv-passive-client stream 0666 system system
 
 service time_daemon /system/bin/time_daemon
    class late_start
@@ -529,69 +545,6 @@ service audiod /system/bin/audiod
    class late_start
    user system
    group system
-
-service usf_tester /system/bin/usf_tester
-    user system
-    group system inet
-    disabled
-    oneshot
-
-service usf_epos /system/bin/usf_epos
-    class main
-    user system
-    group system inet
-    disabled
-    oneshot
-
-service usf_gesture /system/bin/usf_gesture
-    user system
-    group system inet
-    disabled
-    oneshot
-
-service usf_sync_gesture /system/bin/usf_sync_gesture
-    user system
-    group system inet audio
-    disabled
-    oneshot
-
-service usf_p2p /system/bin/usf_p2p
-    user system
-    group system inet
-    disabled
-    oneshot
-
-service usf_hovering /system/bin/usf_hovering
-    user system
-    group system inet
-    disabled
-    oneshot
-
-service usf_proximity /system/bin/usf_proximity
-    class late_start
-    user system
-    group system inet audio
-
-service usf_pairing /system/bin/usf_pairing
-    user system
-    group system inet
-    disabled
-    oneshot
-
-service usf_sw_calib /system/bin/usf_sw_calib
-    user system
-    group system inet
-    disabled
-    oneshot
-
-service usf-post-boot /system/bin/sh /system/etc/usf_post_boot.sh
-    class late_start
-    user root
-    disabled
-    oneshot
-
-on property:init.svc.bootanim=stopped
-    start usf-post-boot
 
 service imsqmidaemon /system/bin/imsqmidaemon
     class main
@@ -682,10 +635,33 @@ service tlocd /system/bin/tloc_daemon
     user system
     group drmrpc gps net_raw
 
+service energy-awareness /system/bin/energy-awareness
+    class main
+    user root
+    group system
+    oneshot
+
 service mdtpd /system/vendor/bin/mdtpd
     class late_start
     user root
     group system radio drmrpc
+
+service dashd /sbin/dashd
+    class core
+    critical
+    seclabel u:r:dashd:s0
+    group root system
+
+on property:init.svc.healthd=restarting
+    restart dashd
+
+service iop /system/bin/iop
+    class main
+    user root
+    group root
+    disabled
+    socket iop seqpacket 0666 root system
+    writepid /dev/cpuset/system-background/tasks
 
 service qcomsysd /system/bin/qcom-system-daemon
     class main
@@ -762,18 +738,7 @@ on property:bluetooth.startbtsnoop=true
 on property:bluetooth.startbtsnoop=false
     stop btsnoop
 
-service qcom-c_core-sh /system/bin/sh /init.qcom.class_core.sh
-    class core
-    user root
-    oneshot
-
-service qcom-c_main-sh /system/bin/sh /init.class_main.sh
-    class main
-    user root
-    oneshot
-
 on property:vold.decrypt=trigger_restart_framework
-    start qcom-c_main-sh
     start config_bt_addr
     start config_bluetooth
 
@@ -1142,52 +1107,6 @@ on property:drmdiag.load=1
 on property:drmdiag.load=0
     stop drmdiag
 
-service qcom-sh /system/bin/sh /init.qcom.sh
-    class late_start
-    user root
-    oneshot
-
-service sensor-sh /system/bin/sh /init.qcom.sensors.sh
-    class core
-    user root
-    oneshot
-
-service qcom-post-boot /system/bin/sh /system/etc/init.qcom.post_boot.sh
-    class late_start
-    user root
-    disabled
-    oneshot
-
-service qti-testscripts /system/bin/sh /system/etc/init.qcom.testscripts.sh
-    class late_start
-    user root
-    disabled
-    oneshot
-    seclabel u:r:qti-testscripts:s0
-
-service wifi-sdio-on /system/bin/sh /system/etc/init.qcom.sdio.sh
-    class late_start
-    group wifi inet
-    disabled
-    oneshot
-
-service wifi-crda /system/bin/sh /system/etc/init.crda.sh
-   class late_start
-   user root
-   disabled
-   oneshot
-
-service config-zram /system/bin/sh /system/etc/init.qcom.zram.sh
-   class late_start
-   user root
-   disabled
-   oneshot
-
-on property:sys.boot_completed=1
-    start qcom-post-boot
-    start qti-testscripts
-    start config-zram
-
 service atfwd /system/bin/ATFWD-daemon
     class late_start
     user system
@@ -1383,6 +1302,11 @@ service iprenew_eth0 /system/bin/dhcpcd -n
     disabled
     oneshot
 
+service ifaadaemon /system/bin/ifaadaemon
+    class late_start
+    user system
+    group system
+
 # such color
 on property:sys.rainbow.recovery=1
     write /sys/class/leds/red/brightness 255
@@ -1410,16 +1334,18 @@ on property:sys.rainbow.recovery=0
 
 # happy dance!
 on post-fs-data
-    write /sys/class/leds/rgb/rgb_blink 0
-    write /sys/class/leds/blue/blink 0
-    write /sys/class/leds/red/blink 0
-    write /sys/class/leds/rgb/rgb_blink 0
-    write /sys/class/leds/blue/brightness 255
-    write /sys/class/leds/green/brightness 255
     write /sys/class/leds/red/brightness 0
+    write /sys/class/leds/red/blink 0
+    write /sys/class/leds/green/brightness 0
+    write /sys/class/leds/green/blink 0
+    write /sys/class/leds/blue/brightness 0
+    write /sys/class/leds/blue/blink 0
+    write /sys/class/leds/rgb/rgb_blink 0
     write /sys/class/leds/green/start_idx 0
     write /sys/class/leds/green/pause_hi 0
     write /sys/class/leds/green/pause_lo 0
     write /sys/class/leds/green/ramp_step_ms 50
     write /sys/class/leds/green/duty_pcts "16,25,33,41,50,58,66,74,83,91,100"
+    write /sys/class/leds/green/brightness 255
+    write /sys/class/leds/blue/brightness 255
     write /sys/class/leds/green/blink 1
